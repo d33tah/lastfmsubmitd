@@ -36,7 +36,9 @@ class Song:
         if other == None:
             return False
         else:
-            return self.file == other.file or \
+            return (self.file == other.file and not (
+	    	self.file.find('http://')==0 or other.file.find('http://')==0 )
+	    ) or \
                 (self.artist == other.artist and self.title == other.title and
                 self.album == other.album and self.length == other.length)
 
@@ -49,7 +51,7 @@ class Song:
         try:
             return lastfm.repr(self.dict())
         except ValueError:
-            return self.file
+            return self.file 
 
     def dict(self):
         d = {'time': time.gmtime(),
@@ -58,11 +60,18 @@ class Song:
             'length': self.length}
         if self.album:
             d['album'] = lastfm.marshaller.guess_enc(self.album, 'utf-8')
-        for reqd in ('artist', 'title', 'length'):
-            if not d[reqd]:
-                raise ValueError('%s is missing %s' % (self.file, reqd))
-        else:
-            return d
+	if not self.file.find('http://')==0:
+	        for reqd in ('artist', 'title', 'length'):
+	            if not d[reqd]:
+	                raise ValueError('%s is missing %s' % (self.file, reqd))
+	        else:
+	            return d
+	else:
+		d['length']=30
+		pos = self.title.find('-')
+		d['artist']=self.title[:pos-1]
+		d['title']=self.title[pos+2:]
+		return d
 
 class MPDMonitor:
     def __init__(self, cli):
@@ -91,11 +100,11 @@ class MPDMonitor:
                 if song != self.prevsong or \
                         self.prevstatus.state == 'stop':
                     self.cli.log.info(u'New song: %s' % song)
-                    if (self.prevsong and pos > self.sleep +
+                    if ((self.prevsong and pos > self.sleep +
                             FUZZ + int(status.xfade)) or \
                             (self.prevsong is None and
                             pos/length > lastfm.SUB_PERCENT or
-                            pos > lastfm.SUB_SECONDS):
+                            pos > lastfm.SUB_SECONDS)) and song.file.find('http://')!=0:
                         self.cli.log.warning('Started at %d, will not submit'
                             % pos)
                         self.skipped = True
@@ -124,7 +133,7 @@ class MPDMonitor:
                         self.cli.log.debug('OK, %d/%d played' % (pos, length))
                         self.played_enough = True
                     if not self.submitted and not self.skipped and \
-                            self.played_enough:
+                            (self.played_enough or song.file.find('http://')==0):
                         self.submit(song)
                         self.submitted = True
         else:
